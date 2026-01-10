@@ -460,3 +460,185 @@ maxdiff_augment <- function(
     
     return(md.define)
 }
+
+maxdiff_augment_updated <- function(
+  filename,
+  Imp,
+  NotImp,
+  codeMDneg = 2,
+  codeMDpos = 1,
+  add_set_labels = TRUE,
+  set_labels = c("Best","Worst"),
+  reorder_threshold = TRUE
+) {
+  # ---- read + parse ----
+  md.define <- parse.md.qualtrics(filename, returnList = TRUE)
+  md.define$q.codeMDneg <- codeMDneg
+  md.define$q.codeMDpos <- codeMDpos
+  md.define$md.block <- read.md.qualtrics(md.define)$md.block
+
+  md.block <- md.define$md.block
+  nrow.preadapt <- nrow(md.block)
+
+  # ---- load full CSV (keep original names) ----
+  full.data <- read.csv(filename, check.names = FALSE)
+
+  if (!("sys_RespNum" %in% names(full.data))) {
+    stop("Expected column 'sys_RespNum' not found in CSV.")
+  }
+
+  # ---- helper: allow Imp/NotImp to be indices OR names ----
+  resolve_cols <- function(df, cols, label) {
+    if (is.numeric(cols)) {
+      cols <- as.integer(cols)
+      if (any(cols < 1 | cols > ncol(df))) {
+        stop(label, " contains out-of-range column indices. ncol(csv) = ", ncol(df))
+      }
+      return(cols)
+    }
+    if (is.character(cols)) {
+      missing <- setdiff(cols, names(df))
+      if (length(missing) > 0) {
+        stop(label, " contains unknown column names: ", paste(missing, collapse = ", "))
+      }
+      return(match(cols, names(df)))
+    }
+    stop(label, " must be numeric indices or character column names.")
+  }
+
+  Imp_cols <- resolve_cols(full.data, Imp, "Imp")
+  NotImp_cols <- resolve_cols(full.data, NotImp, "NotImp")
+
+  # ---- infer item columns from md.block (don’t depend on md.item.k) ----
+  non_item <- c("resp.id","win","chid","choice.coded","Block","Set","sys.resp")
+  candidate <- setdiff(names(md.block), non_item)
+  candidate <- candidate[sapply(md.block[candidate], is.numeric)]
+
+  is_item_like <- function(x) {
+    u <- unique(x[!is.na(x)])
+    length(u) > 0 && all(u %in% c(-1, 0, 1))
+  }
+  item_cols <- candidate[sapply(md.block[candidate], is_item_like)]
+
+  if (length(item_cols) == 0) {
+    stop("Could not infer item columns from md.block. Check your parsed md.block structure.")
+  }
+
+  # Ensure required metadata exists
+  if (is.null(md.define$md.item.pertask)) {
+    stop("md.define$md.item.pertask is NULL. parse/read did not populate task size.")
+  }
+
+  # ---- prepare md.block baseline ----
+  md.block$threshold <- 0
+  md.block$chid <- ceiling(seq_len(nrow(md.block)) / md.define$md.item.pertask)
+
+  # Template reused for each inferred pair (4 rows)
+  md.supp <- md.block[1:4, ]
+  md.supp[, item_cols] <- 0
+  md.supp$win <- 0
+  md.supp$threshold <- 0
+
+  # ---- build augmented rows efficiently ----
+  blocks <- list()
+  k <- 0
+  chid <- max(md.block$chid, na.rm = TRUE) + 1
+
+  for (rid in unique(md.block$resp.id)) {
+    i.data <- full.data[full.data$sys_RespNum == rid, , drop = FALSE]
+    if (nrow(i.data) == 0) next
+    if (nrow(i.data) > 1) i.data <- i.data[1, , drop = FALSE]  # deterministic
+
+    itemsImp <- na.omit(as.numeric(unlist(i.data[Imp_cols])))
+    itemsNot <- na.omit(as.numeric(unlist(i.data[NotImp_cols])))
+
+    # Important items: item > threshold
+    for (imp in itemsImp) {
+      s <- md.supp
+      s[, item_cols] <- 0
+      s$win <- 0
+      s$resp.id <- rid
+
+      # Best: item wins
+      s[1, 2 + imp] <- 1
+      s[2, "threshold"] <- 1
+      s[1, "win"] <- 1
+      s[1:2, "chid"] <- chid
+      if (add_set_labels && "Set" %in% names(s)) s[1:2, "Set"] <- set_labels[1]
+
+      # Worst: threshold wins
+      s[3, 2 + imp] <- -1
+      s[4, "threshold"] <- -1
+      s[4, "win"] <- 1
+      s[3:4, "chid"] <- chid + 1
+      if (add_set_labels && "Set" %in% names(s)) s[3:4, "Set"] <- set_labels[2]
+
+      k <- k + 1
+      blocks[[k]] <- s
+      chid <- chid + 2
+    }
+
+    # Not important items: threshold > item
+    for (notImp in itemsNot) {
+      s <- md.supp
+      s[, item_cols] <- 0
+      s$win <- 0
+      s$resp.id <- rid
+
+      # Best: threshold wins
+      s[1, 2 + notImp] <- 1
+      s[2, "threshold"] <- 1
+      s[2, "win"] <- 1
+      s[1:2, "chid"] <- chid
+      if (add_set_labels && "Set" %in% names(s)) s[1:2, "Set"] <- set_labels[1]
+
+      # Worst: item wins
+      s[3, 2 + notImp] <- -1
+      s[4, "threshold"] <- -1
+      s[3, "win"] <- 1
+      s[3:4, "chid"] <- chid + 1
+      if (add_set_labels && "Set" %in% names(s)) s[3:4, "Set"] <- set_labels[2]
+
+      k <- k + 1
+      blocks[[k]] <- s
+      chid <- chid + 2
+    }
+  }
+
+  if (length(blocks) > 0) {
+    md.block.new <- do.call(rbind, blocks)
+    md.block <- rbind(md.block, md.block.new)
+  }
+
+  # ---- recode choice.coded (match old behavior exactly) ----
+  md.block$choice.coded <- md.block$win
+  md.block$choice.coded[md.block$win == 1] <- "yes"
+  md.block$choice.coded[md.block$win == 0] <- "no"
+  md.block$choice.coded <- factor(md.block$choice.coded, levels = c("no","yes"))
+
+  # ---- update md.define ----
+  md.define$md.block <- md.block
+  md.define$md.nrow.preadapt <- nrow.preadapt
+  md.define$md.csvdata <- full.data
+
+  # Set md.item.k / md.item.names if missing (and append threshold once)
+  if (is.null(md.define$md.item.names)) md.define$md.item.names <- item_cols
+  if (is.null(md.define$md.item.k)) md.define$md.item.k <- length(md.define$md.item.names)
+
+  if (!("threshold" %in% md.define$md.item.names)) {
+    md.define$md.item.names <- c(md.define$md.item.names, "threshold")
+    md.define$md.item.k <- md.define$md.item.k + 1
+  }
+
+  # Reorder like your old function (keeps modeling assumptions safe)
+  if (reorder_threshold) {
+    reorder_cols <- c("threshold", "Block", "Set", "sys.resp", "choice.coded", "chid")
+    md.define$md.block <- md.define$md.block[
+      , c(setdiff(names(md.define$md.block), reorder_cols), reorder_cols),
+      drop = FALSE
+    ]
+  }
+
+  return(md.define)
+}
+
