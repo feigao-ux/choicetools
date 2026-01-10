@@ -329,6 +329,22 @@ maxdiff_augment <- function(
   md.define$q.codeMDpos <- 1
   md.define$md.block <- read.md.qualtrics(md.define)$md.block
 
+  # Ensure md.item.k / md.item.names exist (some Qualtrics exports don't populate them)
+  if (is.null(md.define$md.item.k) || is.null(md.define$md.item.names)) {
+    b <- md.define$md.block
+    non_item <- c("resp.id","win","chid","choice.coded","Block","Set","sys.resp")
+    candidates <- setdiff(names(b), non_item)
+    num_cols <- candidates[sapply(b[candidates], is.numeric)]
+    is_item_like <- function(x) {
+      u <- unique(x[!is.na(x)])
+      all(u %in% c(-1, 0, 1))
+    }
+    item_cols <- num_cols[sapply(b[num_cols], is_item_like)]
+    md.define$md.item.names <- item_cols
+    md.define$md.item.k <- length(item_cols)
+  }
+
+
   # Turn on augmentation and provide column locations for the anchor outputs
   md.define$md.adapt <- TRUE
   md.define$md.adapt.Imp <- Imp
