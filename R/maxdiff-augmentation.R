@@ -463,8 +463,11 @@ maxdiff_augment <- function(
 
 maxdiff_augment_updated <- function(
   filename,
-  Imp,
-  NotImp,
+  Imp = NULL,
+  NotImp = NULL,
+  Imp_prefix = "Imp_",
+  NotImp_prefix = "NotImp_",
+  num_anchor_items = 5,
   codeMDneg = 2,
   codeMDpos = 1,
   add_set_labels = TRUE,
@@ -488,26 +491,52 @@ maxdiff_augment_updated <- function(
   }
 
   # ---- helper: allow Imp/NotImp to be indices OR names ----
-  resolve_cols <- function(df, cols, label) {
-    if (is.numeric(cols)) {
-      cols <- as.integer(cols)
-      if (any(cols < 1 | cols > ncol(df))) {
-        stop(label, " contains out-of-range column indices. ncol(csv) = ", ncol(df))
-      }
-      return(cols)
+make_anchor_names <- function(prefix, n) {
+  if (is.null(prefix) || is.null(n)) return(NULL)
+  if (!is.character(prefix) || length(prefix) != 1) stop("prefix must be a single string.")
+  if (!is.numeric(n) || length(n) != 1 || is.na(n) || n < 1) stop("num_anchor_items must be a positive integer.")
+  n <- as.integer(n)
+
+  # If user passes "Imp" instead of "Imp_", add underscore automatically
+  sep <- if (grepl("_$", prefix)) "" else "_"
+  paste0(prefix, sep, seq_len(n))
+}
+
+resolve_cols <- function(df, cols, label, prefix = NULL, n = NULL) {
+  # If cols not provided, generate from prefix+n
+  if (is.null(cols)) {
+    cols <- make_anchor_names(prefix, n)
+    if (is.null(cols)) {
+      stop(label, ": provide either explicit cols OR (prefix and num_anchor_items).")
     }
-    if (is.character(cols)) {
-      missing <- setdiff(cols, names(df))
-      if (length(missing) > 0) {
-        stop(label, " contains unknown column names: ", paste(missing, collapse = ", "))
-      }
-      return(match(cols, names(df)))
-    }
-    stop(label, " must be numeric indices or character column names.")
   }
 
-  Imp_cols <- resolve_cols(full.data, Imp, "Imp")
-  NotImp_cols <- resolve_cols(full.data, NotImp, "NotImp")
+  # Numeric indices
+  if (is.numeric(cols)) {
+    cols <- as.integer(cols)
+    if (any(cols < 1 | cols > ncol(df))) {
+      stop(label, " contains out-of-range column indices. ncol(csv) = ", ncol(df))
+    }
+    return(cols)
+  }
+
+  # Explicit column names
+  if (is.character(cols)) {
+    missing <- setdiff(cols, names(df))
+    if (length(missing) > 0) {
+      stop(label, " contains unknown column names: ", paste(missing, collapse = ", "))
+    }
+    return(match(cols, names(df)))
+  }
+
+  stop(label, " must be numeric indices, character column names, or NULL (to use prefix + num_anchor_items).")
+}
+
+  # Resolve Imp/NotImp columns
+  Imp_cols <- resolve_cols(full.data, Imp, "Imp",
+                          prefix = Imp_prefix, n = num_anchor_items)
+  NotImp_cols <- resolve_cols(full.data, NotImp, "NotImp",
+                             prefix = NotImp_prefix, n = num_anchor_items)
 
   # ---- infer item columns from md.block (don’t depend on md.item.k) ----
   non_item <- c("resp.id","win","chid","choice.coded","Block","Set","sys.resp")
