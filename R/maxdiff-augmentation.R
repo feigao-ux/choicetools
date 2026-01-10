@@ -16,7 +16,8 @@
 #               .. adds "important" > threshold, and "unimportant" < threshold, not full expansion
 #              "grid" to add all two-way full expansion for "important items" %*% "unimportant"
 
-md.augment <- function(md.define, method="threshold") {
+
+md.augment <- function(md.define, method="threshold", add_set_labels=FALSE, set_labels=c("Best","Worst")) {
 
   # default to new threshold method (as of v0.60), with option for older "grid" expansion
   if (method=="grid") {
@@ -85,11 +86,13 @@ md.augment <- function(md.define, method="threshold") {
             md.supp[2, "threshold"]    <- 1
             md.supp[1, "win"]          <- 1
             md.supp[1:2, "chid"]       <- chid
+            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[1:2, "Set"] <- set_labels[1]
             # set the worst choices (threshold wins as the "worst")
             md.supp[3, 2+imp]          <- -1
             md.supp[4, "threshold"]    <- -1
             md.supp[4, "win"]          <- 1
             md.supp[3:4, "chid"]       <- chid + 1
+            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[3:4, "Set"] <- set_labels[2]
 
             # add the new choice set to the master choice data
             # first, need to preallocate block ?
@@ -130,11 +133,13 @@ md.augment <- function(md.define, method="threshold") {
             md.supp[2, "threshold"]    <- 1
             md.supp[2, "win"]          <- 1
             md.supp[1:2, "chid"]       <- chid
+            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[1:2, "Set"] <- set_labels[1]
             # set the worst choices (item wins as the "worst")
             md.supp[3, 2+notImp]       <- -1
             md.supp[4, "threshold"]    <- -1
             md.supp[3, "win"]          <- 1
             md.supp[3:4, "chid"]       <- chid + 1
+            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[3:4, "Set"] <- set_labels[2]
 
             # add the new choice set to the master choice data
             # first, need to preallocate block ?
