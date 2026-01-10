@@ -355,21 +355,16 @@ maxdiff_augment <- function(
   if (method == "threshold") {
     if (!("threshold" %in% md.define$md.item.names)) {
       md.define$md.item.names <- c(md.define$md.item.names, "threshold")
+      md.define$md.item.k <- md.define$md.item.k + 1
     }
-    md.define$md.item.k <- md.define$md.item.k + 1
-
-    # Optional: reorder columns so threshold is adjacent to the other design-matrix columns
+  
     if (reorder_threshold && "threshold" %in% names(md.define$md.block)) {
-      # Heuristic: move 'threshold' to just before 'Block' (or to the end if Block missing)
-      nm <- names(md.define$md.block)
-      if ("Block" %in% nm) {
-        nm2 <- c(setdiff(nm, "threshold"))
-        insert_at <- match("Block", nm2)
-        nm2 <- append(nm2, "threshold", after = insert_at - 1)
-        md.define$md.block <- md.define$md.block[, nm2, drop = FALSE]
-      }
+      reorder_cols <- c("threshold", "Block", "Set", "sys.resp", "choice.coded", "chid")
+      md.define$md.block <- md.define$md.block[
+        , c(setdiff(names(md.define$md.block), reorder_cols), reorder_cols),
+        drop = FALSE
+      ]
     }
   }
-
   return(md.define)
 }
