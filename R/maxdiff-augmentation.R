@@ -321,12 +321,14 @@ maxdiff_augment <- function(
   NotImp,
   method = "threshold",
   add_set_labels = TRUE,
-  reorder_threshold = TRUE
+  reorder_threshold = TRUE,
+  codeMDneg = 2, 
+  codeMDpos = 1
 ) {
   # Parse + read Qualtrics MaxDiff structure
   md.define <- parse.md.qualtrics(filename, returnList = TRUE)  # :contentReference[oaicite:3]{index=3}
-  md.define$q.codeMDneg <- 2
-  md.define$q.codeMDpos <- 1
+  md.define$q.codeMDneg <- codeMDneg
+  md.define$q.codeMDpos <- codeMDpos
   md.define$md.block <- read.md.qualtrics(md.define)$md.block
 
   # Ensure md.item.k / md.item.names exist (some Qualtrics exports don't populate them)
