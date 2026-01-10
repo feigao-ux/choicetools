@@ -306,4 +306,70 @@ md.augment.grid <- function(md.define) {
   return(list(md.block=md.block, md.nrow.preadapt=nrow.preadapt, md.csvdata=full.data))
 
 }
+#' Convenience wrapper: read Qualtrics MaxDiff CSV, set adapt columns, augment, and return md.define
+#'
+#' @param filename Path to Qualtrics-exported CSV
+#' @param Imp Integer vector of column indices containing the "Important" item IDs
+#' @param NotImp Integer vector of column indices containing the "Not Important" item IDs
+#' @param method "threshold" (default) or "grid" (passed to md.augment)
+#' @param add_set_labels Whether to label augmented rows' Set as Best/Worst (default TRUE)
+#' @param reorder_threshold If TRUE, move threshold column next to item columns for readability
+#' @return md.define (study object) with md.block updated and (for threshold) threshold item appended
+maxdiff_augment <- function(
+  filename,
+  Imp,
+  NotImp,
+  method = "threshold",
+  add_set_labels = TRUE,
+  reorder_threshold = TRUE
+) {
+  # Parse + read Qualtrics MaxDiff structure
+  md.define <- parse.md.qualtrics(filename, returnList = TRUE)  # :contentReference[oaicite:3]{index=3}
+  md.define$q.codeMDneg <- 2
+  md.define$q.codeMDpos <- 1
+  md.define$md.block <- read.md.qualtrics(md.define)$md.block
 
+  # Turn on augmentation and provide column locations for the anchor outputs
+  md.define$md.adapt <- TRUE
+  md.define$md.adapt.Imp <- Imp
+  md.define$md.adapt.NotImp <- NotImp
+
+  # Ensure md.augment can find the CSV (it uses file.wd + file.all in the original code) :contentReference[oaicite:4]{index=4}
+  # If parse.md.qualtrics already populated these, keep them; otherwise set them from filename.
+  if (is.null(md.define$file.wd) || is.null(md.define$file.all)) {
+    # Basic split into directory + basename
+    md.define$file.wd  <- paste0(dirname(filename), "/")
+    md.define$file.all <- basename(filename)
+  }
+
+  # Run augmentation
+  aug <- md.augment(md.define, method = method, add_set_labels = add_set_labels)
+
+  # Stitch results back into md.define (your demo function returned md.define, not a list)
+  md.define$md.block <- aug$md.block
+  md.define$md.nrow.preadapt <- aug$md.nrow.preadapt
+  md.define$md.csvdata <- aug$md.csvdata
+
+  # If threshold method, add the synthetic threshold "item" to the study definition
+  # (grid method doesn't create a threshold column)
+  if (method == "threshold") {
+    if (!("threshold" %in% md.define$md.item.names)) {
+      md.define$md.item.names <- c(md.define$md.item.names, "threshold")
+    }
+    md.define$md.item.k <- md.define$md.item.k + 1
+
+    # Optional: reorder columns so threshold is adjacent to the other design-matrix columns
+    if (reorder_threshold && "threshold" %in% names(md.define$md.block)) {
+      # Heuristic: move 'threshold' to just before 'Block' (or to the end if Block missing)
+      nm <- names(md.define$md.block)
+      if ("Block" %in% nm) {
+        nm2 <- c(setdiff(nm, "threshold"))
+        insert_at <- match("Block", nm2)
+        nm2 <- append(nm2, "threshold", after = insert_at - 1)
+        md.define$md.block <- md.define$md.block[, nm2, drop = FALSE]
+      }
+    }
+  }
+
+  return(md.define)
+}
