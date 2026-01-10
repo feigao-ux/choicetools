@@ -17,7 +17,7 @@
 #              "grid" to add all two-way full expansion for "important items" %*% "unimportant"
 
 
-md.augment <- function(md.define, method="threshold", add_set_labels=FALSE, set_labels=c("Best","Worst")) {
+md.augment <- function(md.define, method="threshold") {
 
   # default to new threshold method (as of v0.60), with option for older "grid" expansion
   if (method=="grid") {
@@ -86,13 +86,13 @@ md.augment <- function(md.define, method="threshold", add_set_labels=FALSE, set_
             md.supp[2, "threshold"]    <- 1
             md.supp[1, "win"]          <- 1
             md.supp[1:2, "chid"]       <- chid
-            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[1:2, "Set"] <- set_labels[1]
+            
             # set the worst choices (threshold wins as the "worst")
             md.supp[3, 2+imp]          <- -1
             md.supp[4, "threshold"]    <- -1
             md.supp[4, "win"]          <- 1
             md.supp[3:4, "chid"]       <- chid + 1
-            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[3:4, "Set"] <- set_labels[2]
+            
 
             # add the new choice set to the master choice data
             # first, need to preallocate block ?
@@ -133,13 +133,13 @@ md.augment <- function(md.define, method="threshold", add_set_labels=FALSE, set_
             md.supp[2, "threshold"]    <- 1
             md.supp[2, "win"]          <- 1
             md.supp[1:2, "chid"]       <- chid
-            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[1:2, "Set"] <- set_labels[1]
+            
             # set the worst choices (item wins as the "worst")
             md.supp[3, 2+notImp]       <- -1
             md.supp[4, "threshold"]    <- -1
             md.supp[3, "win"]          <- 1
             md.supp[3:4, "chid"]       <- chid + 1
-            if (add_set_labels && "Set" %in% names(md.supp)) md.supp[3:4, "Set"] <- set_labels[2]
+            
 
             # add the new choice set to the master choice data
             # first, need to preallocate block ?
@@ -325,64 +325,138 @@ maxdiff_augment <- function(
   codeMDneg = 2, 
   codeMDpos = 1
 ) {
-  # Parse + read Qualtrics MaxDiff structure
-  md.define <- parse.md.qualtrics(filename, returnList = TRUE)  # :contentReference[oaicite:3]{index=3}
-  md.define$q.codeMDneg <- codeMDneg
-  md.define$q.codeMDpos <- codeMDpos
-  md.define$md.block <- read.md.qualtrics(md.define)$md.block
+    md.define <- parse.md.qualtrics(filename, returnList=TRUE)
+    md.define$q.codeMDneg <- codeMDneg
+    md.define$q.codeMDpos <- codeMDpos
+    md.define$md.block <- read.md.qualtrics(md.define)$md.block
+    
+    md.define_noanchor <- md.define
+    
+    md.define$md.adapt = TRUE         # use adaptive method to supplement choices?
+    md.define$md.adapt.Imp     = Imp       # columns of file.all that list items selected as "Important"
+    md.define$md.adapt.NotImp  = NotImp   # columns of file.all that list "not important" items
+    
+    md.block <- md.define$md.block         # copy of the data so we can munge it and return
+    md.block$threshold <- 0               # add or clear column to code threshold as "not shown"
+    
+    # set up blocks for basic CHO data before augmenting choice sets
+    md.block$chid          <- ceiling(1:nrow(md.block)/md.define$md.item.pertask)
+    md.block$choice.coded  <- md.block$win
+    
+    # load full CSV data
+    # Reading full data set to get augmentation variables.
+    full.data <- read.csv(filename)
+    
+    nrow.preadapt <- nrow(md.block)
+    if (md.define$md.adapt) {
+    
+          ## TO DO: some data quality tests and error recovery for full.data
+    
+          # set states for preallocation and placeholder
+          block.new  <- TRUE
+    
+          # loop over all respondents and add data ...
+          #
+          chid <- max(md.block$chid)+1                          # counter for choice blocks as we add them
+          md.supp <- md.block[1:4, ]   # a block we'll reuse for all the Imp x NotImp choices below
+    
+          # for all respondents ...
+          for (i in unique(md.block$resp.id)) {
+            i.data   <- full.data[full.data$sys_RespNum==i, ]
+            itemsImp <- i.data[md.define$md.adapt.Imp]            # remove magic numbers
+            itemsImp <- na.omit(as.numeric(itemsImp))
+            itemsNotImp <- i.data[md.define$md.adapt.NotImp]       # remove magic numbers
+            itemsNotImp <- na.omit(as.numeric(itemsNotImp))
+    
+            # first augment the Important items vs. threshold, if any
+            if (length(itemsImp) > 0) {
+    
+              for (imp in itemsImp) {
+                # set up an empty block of A vs. B choices to hold our augmented comparison
+                # structure is: Rows 1/2 == IMP vs. threshold, IMP       == Best
+                #               Rows 3/4 == IMP vs. threshold, threshold == Worst
+                md.supp[ , 3:(md.define$md.item.k+2)] <- 0    # clear design matrix
+                md.supp$win                <- 0    # " "
+                # fill in our metadata
+                md.supp$resp.id            <- i
+                # set the best choices (item wins vs. threshold)
+                md.supp[1, 2+imp]          <- 1
+                md.supp[2, "threshold"]    <- 1
+                md.supp[1, "win"]          <- 1
+                md.supp[1:2, "chid"]       <- chid
+                md.supp[1:2, "Set"] <- "Best"
+                # set the worst choices (threshold wins as the "worst")
+                md.supp[3, 2+imp]          <- -1
+                md.supp[4, "threshold"]    <- -1
+                md.supp[4, "win"]          <- 1
+                md.supp[3:4, "chid"]       <- chid + 1
+                md.supp[3:4, "Set"] <- "Worst"
+                
+                if(block.new){
+                  md.block.new <- md.supp
+                  block.new <- FALSE
+                }else{
+                  md.block.new <- rbind(md.block.new, md.supp)
+                }  
+                chid                       <- chid + 2
+              }
+            }
+    
+            ## Second, augment the unimportant items, if any
+            if (length(itemsNotImp) > 0) {
+    
+              for (notImp in itemsNotImp) {
+                # set up an empty block of A vs. B choices to hold our augmented comparison
+                # structure is: Rows 1/2 == notIMP vs. threshold, threshold  == Best
+                #               Rows 3/4 == notIMP vs. threshold, item       == Worst
+                md.supp[ , 3:(md.define$md.item.k+2)] <- 0    # clear design matrix
+                md.supp$win                <- 0    # " "
+                # fill in our metadata
+                md.supp$resp.id            <- i
+                # set the best choices (threshold wins vs item as the "best")
+                md.supp[1, 2+notImp]          <- 1
+                md.supp[2, "threshold"]    <- 1
+                md.supp[2, "win"]          <- 1
+                md.supp[1:2, "chid"]       <- chid
+                md.supp[1:2, "Set"] <- "Best"
+                # set the worst choices (item wins as the "worst")
+                md.supp[3, 2+notImp]       <- -1
+                md.supp[4, "threshold"]    <- -1
+                md.supp[3, "win"]          <- 1
+                md.supp[3:4, "chid"]       <- chid + 1
+                md.supp[3:4, "Set"] <- "Worst"
+                
+                if(block.new){
+                  md.block.new <- md.supp
+                  block.new <- FALSE
+                }
+                
+                md.block.new <- rbind(md.block.new, md.supp)
+                chid                       <- chid + 2
+              }
+            }
+          }  # end FOR respondents
+        }
+    
+    md.block <- rbind(md.block, md.block.new)
+    
+    # now cast the new blocks into conditional format
+    md.block$choice.coded <- md.block$win
+    md.block$choice.coded[which(md.block$win==1)] <- 'yes'   # recode 1's into yes
+    md.block$choice.coded[which(md.block$win==0)] <- 'no'    # recode 0's into no
+    md.block$choice.coded <- as.factor(md.block$choice.coded)
+    # table(md.block$win, md.block$choice.coded)
+    
+    md.define$md.block <- md.block
+    md.define$md.nrow.preadapt <- nrow.preadapt
+    md.define$md.csvdata <- full.data
+    
+    md.define$md.item.k <- md.define$md.item.k + 1
 
-  # Ensure md.item.k / md.item.names exist (some Qualtrics exports don't populate them)
-  if (is.null(md.define$md.item.k) || is.null(md.define$md.item.names)) {
-    b <- md.define$md.block
-    non_item <- c("resp.id","win","chid","choice.coded","Block","Set","sys.resp")
-    candidates <- setdiff(names(b), non_item)
-    num_cols <- candidates[sapply(b[candidates], is.numeric)]
-    is_item_like <- function(x) {
-      u <- unique(x[!is.na(x)])
-      all(u %in% c(-1, 0, 1))
-    }
-    item_cols <- num_cols[sapply(b[num_cols], is_item_like)]
-    md.define$md.item.names <- item_cols
-    md.define$md.item.k <- length(item_cols)
-  }
-
-
-  # Turn on augmentation and provide column locations for the anchor outputs
-  md.define$md.adapt <- TRUE
-  md.define$md.adapt.Imp <- Imp
-  md.define$md.adapt.NotImp <- NotImp
-
-  # Ensure md.augment can find the CSV (it uses file.wd + file.all in the original code) :contentReference[oaicite:4]{index=4}
-  # If parse.md.qualtrics already populated these, keep them; otherwise set them from filename.
-  if (is.null(md.define$file.wd) || is.null(md.define$file.all)) {
-    # Basic split into directory + basename
-    md.define$file.wd  <- paste0(dirname(filename), "/")
-    md.define$file.all <- basename(filename)
-  }
-
-  # Run augmentation
-  aug <- md.augment(md.define, method = method, add_set_labels = add_set_labels)
-
-  # Stitch results back into md.define (your demo function returned md.define, not a list)
-  md.define$md.block <- aug$md.block
-  md.define$md.nrow.preadapt <- aug$md.nrow.preadapt
-  md.define$md.csvdata <- aug$md.csvdata
-
-  # If threshold method, add the synthetic threshold "item" to the study definition
-  # (grid method doesn't create a threshold column)
-  if (method == "threshold") {
-    if (!("threshold" %in% md.define$md.item.names)) {
-      md.define$md.item.names <- c(md.define$md.item.names, "threshold")
-      md.define$md.item.k <- md.define$md.item.k + 1
-    }
-  
-    if (reorder_threshold && "threshold" %in% names(md.define$md.block)) {
-      reorder_cols <- c("threshold", "Block", "Set", "sys.resp", "choice.coded", "chid")
-      md.define$md.block <- md.define$md.block[
-        , c(setdiff(names(md.define$md.block), reorder_cols), reorder_cols),
-        drop = FALSE
-      ]
-    }
-  }
-  return(md.define)
+    # Reorder threshold to be next to the other items
+    reorder_cols <- c("threshold", "Block", "Set", "sys.resp", "choice.coded", "chid")
+    md.define$md.block <- md.define$md.block[,c(setdiff(names(md.define$md.block), reorder_cols), reorder_cols)]
+    md.define$md.item.names <- c(md.define$md.item.names, "threshold")
+    
+    return(md.define)
 }
