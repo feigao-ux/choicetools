@@ -5,6 +5,8 @@
 # 2) Reformat to choiceTools wide format (reformatted.csv)
 # 3) Optionally add Direct-Binary anchor question (reformatted_anchor.csv)
 #
+# IMPORTANT: we DO NOT use variable name `df` to avoid collision with stats::df()
+#
 # Dependencies: readr, dplyr
 # ------------------------------------------------------------
 
@@ -20,7 +22,8 @@ write_qualtrics_3row_csv <- function(df_wide, headers, exportfile) {
   # headers: list(first=..., second=..., third=...)
   hdr <- rbind(headers$first, headers$second, headers$third)
   write.table(hdr, file = exportfile, sep = ",", row.names = FALSE, col.names = FALSE)
-  write.table(df_wide, file = exportfile, sep = ",", row.names = FALSE, col.names = FALSE, append = TRUE)
+  write.table(df_wide, file = exportfile, sep = ",",
+              row.names = FALSE, col.names = FALSE, append = TRUE)
   invisible(exportfile)
 }
 
@@ -34,28 +37,28 @@ read_qualtrics_maxdiff_numeric <- function(
   maxdiff_flag_col = "vers_MAXDIFF",
   response_id_col = "ResponseId"
 ) {
-  df <- read_csv(filename, skip = skip, show_col_types = FALSE)
+  df_raw <- read_csv(filename, skip = skip, show_col_types = FALSE)
   col_names <- read_csv(filename, n_max = header_rows, show_col_types = FALSE)
-  colnames(df) <- colnames(col_names)
+  colnames(df_raw) <- colnames(col_names)
 
-  if (!(maxdiff_flag_col %in% names(df))) {
+  if (!(maxdiff_flag_col %in% names(df_raw))) {
     stop("Expected column not found: ", maxdiff_flag_col)
   }
-  if (!(response_id_col %in% names(df))) {
+  if (!(response_id_col %in% names(df_raw))) {
     stop("Expected column not found: ", response_id_col)
   }
 
-  df <- df %>% filter(!is.na(.data[[maxdiff_flag_col]]))
-  df$sys_RespNum <- seq_along(df[[response_id_col]])
-  df
+  df_raw <- df_raw %>% filter(!is.na(.data[[maxdiff_flag_col]]))
+  df_raw$sys_RespNum <- seq_along(df_raw[[response_id_col]])
+  df_raw
 }
 
-# ----------------------------
+# -------------------------------------------
 # Step 2: reformat MaxDiff to choiceTools wide format (NO anchor)
-# Returns: list(df_expanded, headers, df_raw_with_numeric_do)
-# ----------------------------
+# Returns: list(df_expanded, headers, df_raw)
+# -------------------------------------------
 maxdiff_reformat_no_anchor <- function(
-  df,
+  df_raw,
   all_labels,
   num_question = 6,
   num_item_per_question = 5,
@@ -75,15 +78,15 @@ maxdiff_reformat_no_anchor <- function(
   third.row  <- c("{'ImportId': 'sys_RespNum'}")
 
   # Expanded wide dataframe
-  df_expanded <- data.frame(sys_RespNum = df$sys_RespNum)
+  df_expanded <- data.frame(sys_RespNum = df_raw$sys_RespNum)
 
   # Expand per question
   for (q in seq_len(num_question)) {
     choice_cols <- paste0(choice_prefix, q, "_", seq_len(num_item_per_question))
     label_cols  <- paste0(q, ".", seq_len(num_item_per_question), label_suffix)
 
-    missing_choice <- setdiff(choice_cols, names(df))
-    missing_label  <- setdiff(label_cols, names(df))
+    missing_choice <- setdiff(choice_cols, names(df_raw))
+    missing_label  <- setdiff(label_cols, names(df_raw))
     if (length(missing_choice) > 0 || length(missing_label) > 0) {
       stop(
         "Missing columns for q=", q,
@@ -101,34 +104,34 @@ maxdiff_reformat_no_anchor <- function(
       third.row  <- c(third.row,  paste0("{'ImportId':", new_col, "}"))
 
       for (i in seq_len(num_item_per_question)) {
-        mask <- df[[label_cols[i]]] == item
-        df_expanded[[new_col]][mask] <- df[[choice_cols[i]]][mask]
+        mask <- df_raw[[label_cols[i]]] == item
+        df_expanded[[new_col]][mask] <- df_raw[[choice_cols[i]]][mask]
       }
     }
   }
 
   # Identify which label columns are the MaxDiff items (used for DO / numeric conversion)
-  maxdiff_cols <- grep(paste0(label_suffix, "$"), names(df), value = TRUE)
+  maxdiff_cols <- grep(paste0(label_suffix, "$"), names(df_raw), value = TRUE)
 
-  # Your old code skipped the first one, and then took exactly num_question*num_item_per_question
-  # to match displayed items. We'll preserve that behavior.
+  # Preserve your old behavior: skip first matched, then take exactly Q*items columns
   maxdiff_cols <- maxdiff_cols[2:(num_item_per_question * num_question + 1)]
 
   # Create numeric versions of MaxDiff item labels
   for (col in maxdiff_cols) {
     new_col <- paste0(col, "_NUM")
-    df[[new_col]] <- lookup$code[match(df[[col]], lookup$label)]
+    df_raw[[new_col]] <- lookup$code[match(df_raw[[col]], lookup$label)]
   }
 
   # Create display order columns DO-Q-Q#
   for (q in seq_len(num_question)) {
     cols <- paste0(q, ".", seq_len(num_item_per_question), label_suffix, "_NUM")
-    missing_do <- setdiff(cols, names(df))
+    missing_do <- setdiff(cols, names(df_raw))
     if (length(missing_do) > 0) {
-      stop("Missing numeric label columns for display order q=", q, ": ", paste(missing_do, collapse = ", "))
+      stop("Missing numeric label columns for display order q=", q, ": ",
+           paste(missing_do, collapse = ", "))
     }
 
-    df_expanded[[paste0("DO-Q-Q", q)]] <- apply(df[cols], 1, paste, collapse = "|")
+    df_expanded[[paste0("DO-Q-Q", q)]] <- apply(df_raw[cols], 1, paste, collapse = "|")
     second.row <- c(second.row, "Display Order: (Your MaxDiff Question Body)?")
     third.row  <- c(third.row,  paste0("{'ImportId':", "DO-Q-Q", q, "}"))
   }
@@ -145,18 +148,18 @@ maxdiff_reformat_no_anchor <- function(
   invisible(list(
     df_expanded = df_expanded,
     headers = headers,
-    df_raw = df
+    df_raw = df_raw
   ))
 }
 
-# ----------------------------
-# Step 3: prepare Direct-Binary anchor columns and join to expanded df
+# --------------------------------------------------------
+# Step 3: add Direct-Binary anchor columns and join to expanded df
 # Anchor raw columns are: paste0(anchor_prefix, 1:total_item)
 # Values: 1 = Important, 2 = Not Important
 # Output columns appended: Imp_1..num_anchor_item, NotImp_1..num_anchor_item
-# ----------------------------
+# --------------------------------------------------------
 maxdiff_add_anchor_direct_binary <- function(
-  df,
+  df_raw,
   df_expanded,
   headers,
   anchor_prefix,
@@ -167,14 +170,13 @@ maxdiff_add_anchor_direct_binary <- function(
 ) {
   if (length(out_prefix) != 2) stop("out_prefix must be c('Imp','NotImp')")
 
-  # Validate anchor raw columns exist
   anchor_cols <- paste0(anchor_prefix, seq_len(total_item))
-  missing <- setdiff(anchor_cols, names(df))
+  missing <- setdiff(anchor_cols, names(df_raw))
   if (length(missing) > 0) {
     stop("Missing anchor columns: ", paste(missing, collapse = ", "))
   }
 
-  df_anchor <- df %>%
+  df_anchor <- df_raw %>%
     select(sys_RespNum, all_of(anchor_cols))
 
   # Build reformatted anchor dataframe
@@ -184,7 +186,6 @@ maxdiff_add_anchor_direct_binary <- function(
     df_anchor_reformatted[[paste0(out_prefix[2], "_", k)]] <- NA_integer_
   }
 
-  # Fill item IDs
   for (r in seq_len(nrow(df_anchor))) {
     row_vals <- suppressWarnings(as.numeric(df_anchor[r, anchor_cols, drop = TRUE]))
     imp_items <- which(row_vals == 1)
@@ -205,18 +206,16 @@ maxdiff_add_anchor_direct_binary <- function(
   not_cols <- grep(paste0("^", out_prefix[2], "_"), names(df_anchor_reformatted), value = TRUE)
   df_anchor_reformatted <- df_anchor_reformatted[, c("sys_RespNum", imp_cols, not_cols), drop = FALSE]
 
-  # Join with expanded
   combined_df <- df_expanded %>%
     left_join(df_anchor_reformatted, by = "sys_RespNum")
 
-  # Extend headers for new anchor columns
+  # Extend headers
   new_cols <- setdiff(names(combined_df), headers$first)
   headers2 <- headers
   headers2$first <- names(combined_df)
   headers2$second <- c(headers$second, paste0("Anchor%-%", new_cols))
   headers2$third  <- c(headers$third,  paste0("{'ImportId':", new_cols, "}"))
 
-  # Write anchored file
   write_qualtrics_3row_csv(combined_df, headers2, exportfile)
 
   invisible(list(
@@ -228,7 +227,7 @@ maxdiff_add_anchor_direct_binary <- function(
 
 # ----------------------------
 # One-shot wrapper
-# Provide raw file, parameters, and (optionally) anchor prefix
+# Provide raw file, parameters, and optional anchor prefix
 # ----------------------------
 maxdiff_prepare_files <- function(
   raw_filename,
@@ -250,7 +249,7 @@ maxdiff_prepare_files <- function(
   out_prefix = c("Imp", "NotImp")
 ) {
   # 1) read + filter
-  df <- read_qualtrics_maxdiff_numeric(
+  df_raw <- read_qualtrics_maxdiff_numeric(
     filename = raw_filename,
     skip = skip,
     header_rows = header_rows,
@@ -260,7 +259,7 @@ maxdiff_prepare_files <- function(
 
   # 2) reformat (no anchor)
   prep <- maxdiff_reformat_no_anchor(
-    df = df,
+    df_raw = df_raw,
     all_labels = all_labels,
     num_question = num_question,
     num_item_per_question = num_item_per_question,
@@ -274,7 +273,7 @@ maxdiff_prepare_files <- function(
       stop("To write export_anchor, provide anchor_prefix and anchor_total_item.")
     }
     anch <- maxdiff_add_anchor_direct_binary(
-      df = df,
+      df_raw = df_raw,
       df_expanded = prep$df_expanded,
       headers = prep$headers,
       anchor_prefix = anchor_prefix,
@@ -286,7 +285,7 @@ maxdiff_prepare_files <- function(
   }
 
   invisible(list(
-    df = df,
+    df_raw = df_raw,
     df_expanded = prep$df_expanded,
     headers = prep$headers,
     reformatted_file = export_maxdiff,
@@ -296,11 +295,11 @@ maxdiff_prepare_files <- function(
 }
 
 # ----------------------------
-# Example usage (uncomment to run)
+# Example usage (copy/paste)
 # ----------------------------
 # labels <- c("Dog","Cat","Fish","Bird","Hamster","Rabbit","Lizard","Turtle","Guinea pig","Horse")
 #
-# # 1) MaxDiff only:
+# # MaxDiff only:
 # out <- maxdiff_prepare_files(
 #   raw_filename = "Demo_Pet.csv",
 #   all_labels = labels,
@@ -309,7 +308,7 @@ maxdiff_prepare_files <- function(
 #   export_maxdiff = "reformatted.csv"
 # )
 #
-# # 2) MaxDiff + Direct-Binary anchor:
+# # MaxDiff + Direct-Binary anchor:
 # out2 <- maxdiff_prepare_files(
 #   raw_filename = "Demo_Pet.csv",
 #   all_labels = labels,
@@ -321,6 +320,7 @@ maxdiff_prepare_files <- function(
 #   anchor_total_item = 10,
 #   num_anchor_item = 5
 # )
+
 
 
 
