@@ -37,8 +37,8 @@ read_qualtrics_maxdiff_numeric <- function(
   maxdiff_flag_col = "vers_MAXDIFF",
   response_id_col = "ResponseId"
 ) {
-  df_raw <- read_csv(filename, skip = skip, show_col_types = FALSE)
-  col_names <- read_csv(filename, n_max = header_rows, show_col_types = FALSE)
+  df_raw <- readr::read_csv(filename, skip = skip, show_col_types = FALSE)
+  col_names <- readr::read_csv(filename, n_max = header_rows, show_col_types = FALSE)
   colnames(df_raw) <- colnames(col_names)
 
   if (!(maxdiff_flag_col %in% names(df_raw))) {
