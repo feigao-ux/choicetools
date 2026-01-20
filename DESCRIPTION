@@ -17,7 +17,7 @@ Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
 Imports:
-    readr,
     dplyr,
     magrittr,
-    rlang
+    rlang,
+    readr
