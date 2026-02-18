@@ -318,7 +318,6 @@ md.augment.grid <- function(md.define) {
 maxdiff_augment <- function(
   filename = NULL,
   data = NULL,
-  headers = NULL,
   Imp = NULL,
   NotImp = NULL,
   Imp_prefix = "Imp_",
@@ -339,34 +338,9 @@ maxdiff_augment <- function(
 
   if (!is.null(data)) {
     if (!is.data.frame(data)) stop("`data` must be a data.frame.")
-
-    build_headers_from_data <- function(dat) {
-      cols <- names(dat)
-      list(
-        first = cols,
-        second = vapply(cols, function(col) {
-          if (grepl("^DO-Q-Q", col)) return("Display Order: Imported MaxDiff Question")
-          if (grepl("^(Imp|NotImp)_", col)) return(paste0("Anchor%-%", col))
-          if (grepl("^Q[0-9]+_[0-9]+$", col)) return(paste0("Imported MaxDiff Question%-%", col))
-          col
-        }, character(1)),
-        third = paste0("{'ImportId':", cols, "}")
-      )
-    }
-
-    hdr <- headers
-    if (is.null(hdr)) {
-      hdr <- build_headers_from_data(data)
-    }
-    if (!all(c("first", "second", "third") %in% names(hdr))) {
-      stop("`headers` must be a list with elements: first, second, third.")
-    }
-
     tmp_file <- tempfile(fileext = ".csv")
     on.exit(unlink(tmp_file), add = TRUE)
-    hdr_mat <- rbind(hdr$first, hdr$second, hdr$third)
-    write.table(hdr_mat, file = tmp_file, sep = ",", row.names = FALSE, col.names = FALSE)
-    write.table(data, file = tmp_file, sep = ",", row.names = FALSE, col.names = FALSE, append = TRUE)
+    write.csv(data, file = tmp_file, row.names = FALSE, na = "")
     input_file <- tmp_file
   } else {
     input_file <- filename
