@@ -143,7 +143,7 @@ preprocess.md.qualtrics <- function(dat, itemConfirm=NULL) {
   # did we find anything?
   if (length(do.tab) < 1) {
     # we did not find any "Display Order" at all
-    cat("Could not detect MaxDiff Display Order columns. Data may be missing the randomized design matrices.\n")
+    stop("Could not detect MaxDiff Display Order columns. Data may be missing the randomized design matrices.")
   } else {
     # we did find at least one, so let's process the items
     # we will find the item names for the MaxDiff items and update those columns
