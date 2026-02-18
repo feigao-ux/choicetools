@@ -1,3 +1,2 @@
 exportPattern("^[[:alpha:]]+")
-importFrom(readr)
-importFrom(rlang)
+importFrom(readr,read_csv)
