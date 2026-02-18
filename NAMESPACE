@@ -1,5 +1,3 @@
 exportPattern("^[[:alpha:]]+")
 importFrom(readr)
-importFrom(magrittr, %>%)
-importFrom(dplyr)
 importFrom(rlang)

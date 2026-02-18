@@ -7,12 +7,11 @@
 #
 # IMPORTANT: we DO NOT use variable name `df` to avoid collision with stats::df()
 #
-# Dependencies: readr, dplyr
+# Dependencies: readr
 # ------------------------------------------------------------
 
 suppressPackageStartupMessages({
   library(readr)
-  library(dplyr)
 })
 
 # ----------------------------
@@ -48,7 +47,7 @@ read_qualtrics_maxdiff_numeric <- function(
     stop("Expected column not found: ", response_id_col)
   }
 
-  df_raw <- df_raw %>% filter(!is.na(.data[[maxdiff_flag_col]]))
+  df_raw <- df_raw[!is.na(df_raw[[maxdiff_flag_col]]), , drop = FALSE]
   df_raw$sys_RespNum <- seq_along(df_raw[[response_id_col]])
   df_raw
 }
@@ -176,8 +175,7 @@ maxdiff_add_anchor_direct_binary <- function(
     stop("Missing anchor columns: ", paste(missing, collapse = ", "))
   }
 
-  df_anchor <- df_raw %>%
-    select(sys_RespNum, all_of(anchor_cols))
+  df_anchor <- df_raw[, c("sys_RespNum", anchor_cols), drop = FALSE]
 
   # Build reformatted anchor dataframe
   df_anchor_reformatted <- data.frame(sys_RespNum = df_anchor$sys_RespNum)
@@ -206,8 +204,9 @@ maxdiff_add_anchor_direct_binary <- function(
   not_cols <- grep(paste0("^", out_prefix[2], "_"), names(df_anchor_reformatted), value = TRUE)
   df_anchor_reformatted <- df_anchor_reformatted[, c("sys_RespNum", imp_cols, not_cols), drop = FALSE]
 
-  combined_df <- df_expanded %>%
-    left_join(df_anchor_reformatted, by = "sys_RespNum")
+  join_index <- match(df_expanded$sys_RespNum, df_anchor_reformatted$sys_RespNum)
+  anchor_only <- df_anchor_reformatted[join_index, setdiff(names(df_anchor_reformatted), "sys_RespNum"), drop = FALSE]
+  combined_df <- cbind(df_expanded, anchor_only)
 
   # Extend headers
   new_cols <- setdiff(names(combined_df), headers$first)
@@ -320,7 +319,5 @@ maxdiff_prepare_files <- function(
 #   anchor_total_item = 10,
 #   num_anchor_item = 5
 # )
-
-
 
 
