@@ -316,7 +316,8 @@ md.augment.grid <- function(md.define) {
 #' @param reorder_threshold If TRUE, move threshold column next to item columns for readability
 #' @return md.define (study object) with md.block updated and (for threshold) threshold item appended
 maxdiff_augment <- function(
-  filename,
+  filename = NULL,
+  data = NULL,
   Imp = NULL,
   NotImp = NULL,
   Imp_prefix = "Imp_",
@@ -328,8 +329,25 @@ maxdiff_augment <- function(
   set_labels = c("Best","Worst"),
   reorder_threshold = TRUE
 ) {
+  if (is.null(filename) && is.null(data)) {
+    stop("Provide either `filename` or `data`.")
+  }
+  if (!is.null(filename) && !is.null(data)) {
+    stop("Provide only one of `filename` or `data`, not both.")
+  }
+
+  if (!is.null(data)) {
+    if (!is.data.frame(data)) stop("`data` must be a data.frame.")
+    tmp_file <- tempfile(fileext = ".csv")
+    on.exit(unlink(tmp_file), add = TRUE)
+    write.csv(data, file = tmp_file, row.names = FALSE, na = "")
+    input_file <- tmp_file
+  } else {
+    input_file <- filename
+  }
+
   # ---- read + parse ----
-  md.define <- parse.md.qualtrics(filename, returnList = TRUE)
+  md.define <- parse.md.qualtrics(input_file, returnList = TRUE)
   md.define$q.codeMDneg <- codeMDneg
   md.define$q.codeMDpos <- codeMDpos
   md.define$md.block <- read.md.qualtrics(md.define)$md.block
@@ -338,7 +356,7 @@ maxdiff_augment <- function(
   nrow.preadapt <- nrow(md.block)
 
   # ---- load full CSV (keep original names) ----
-  full.data <- read.csv(filename, check.names = FALSE)
+  full.data <- read.csv(input_file, check.names = FALSE)
 
   if (!("sys_RespNum" %in% names(full.data))) {
     stop("Expected column 'sys_RespNum' not found in CSV.")
@@ -524,4 +542,3 @@ resolve_cols <- function(df, cols, label, prefix = NULL, n = NULL) {
 
   return(md.define)
 }
-

@@ -18,6 +18,9 @@ suppressPackageStartupMessages({
 # Helper: write 3-row header CSV
 # ----------------------------
 write_qualtrics_3row_csv <- function(df_wide, headers, exportfile) {
+  if (is.null(exportfile) || !nzchar(exportfile)) {
+    stop("exportfile must be a non-empty file path.")
+  }
   # headers: list(first=..., second=..., third=...)
   hdr <- rbind(headers$first, headers$second, headers$third)
   write.table(hdr, file = exportfile, sep = ",", row.names = FALSE, col.names = FALSE)
@@ -61,7 +64,7 @@ maxdiff_reformat_no_anchor <- function(
   all_labels,
   num_question = 6,
   num_item_per_question = 5,
-  exportfile = "reformatted.csv",
+  exportfile = NULL,
   choice_prefix = "C",
   label_suffix = "_MAXDIFF"
 ) {
@@ -141,8 +144,10 @@ maxdiff_reformat_no_anchor <- function(
     third = third.row
   )
 
-  # Write out file
-  write_qualtrics_3row_csv(df_expanded, headers, exportfile)
+  # Write out file (optional)
+  if (!is.null(exportfile)) {
+    write_qualtrics_3row_csv(df_expanded, headers, exportfile)
+  }
 
   invisible(list(
     df_expanded = df_expanded,
@@ -164,7 +169,7 @@ maxdiff_add_anchor_direct_binary <- function(
   anchor_prefix,
   total_item,
   num_anchor_item = 5,
-  exportfile = "reformatted_anchor.csv",
+  exportfile = NULL,
   out_prefix = c("Imp", "NotImp")
 ) {
   if (length(out_prefix) != 2) stop("out_prefix must be c('Imp','NotImp')")
@@ -215,7 +220,9 @@ maxdiff_add_anchor_direct_binary <- function(
   headers2$second <- c(headers$second, paste0("Anchor%-%", new_cols))
   headers2$third  <- c(headers$third,  paste0("{'ImportId':", new_cols, "}"))
 
-  write_qualtrics_3row_csv(combined_df, headers2, exportfile)
+  if (!is.null(exportfile)) {
+    write_qualtrics_3row_csv(combined_df, headers2, exportfile)
+  }
 
   invisible(list(
     combined_df = combined_df,
@@ -239,7 +246,7 @@ maxdiff_prepare_files <- function(
   maxdiff_flag_col = "vers_MAXDIFF",
   response_id_col = "ResponseId",
   # outputs
-  export_maxdiff = "reformatted.csv",
+  export_maxdiff = NULL,
   export_anchor = NULL,
   # anchor params (direct-binary)
   anchor_prefix = NULL,
@@ -319,5 +326,4 @@ maxdiff_prepare_files <- function(
 #   anchor_total_item = 10,
 #   num_anchor_item = 5
 # )
-
 
