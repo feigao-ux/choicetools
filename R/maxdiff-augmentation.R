@@ -327,7 +327,8 @@ maxdiff_augment <- function(
   codeMDpos = 1,
   add_set_labels = TRUE,
   set_labels = c("Best","Worst"),
-  reorder_threshold = TRUE
+  reorder_threshold = TRUE,
+  ...
 ) {
   if (is.null(filename) && is.null(data)) {
     stop("Provide either `filename` or `data`.")
