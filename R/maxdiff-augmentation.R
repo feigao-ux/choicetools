@@ -316,7 +316,9 @@ md.augment.grid <- function(md.define) {
 #' @param reorder_threshold If TRUE, move threshold column next to item columns for readability
 #' @return md.define (study object) with md.block updated and (for threshold) threshold item appended
 maxdiff_augment <- function(
-  filename,
+  filename = NULL,
+  data = NULL,
+  headers = NULL,
   Imp = NULL,
   NotImp = NULL,
   Imp_prefix = "Imp_",
@@ -328,8 +330,50 @@ maxdiff_augment <- function(
   set_labels = c("Best","Worst"),
   reorder_threshold = TRUE
 ) {
+  if (is.null(filename) && is.null(data)) {
+    stop("Provide either `filename` or `data`.")
+  }
+  if (!is.null(filename) && !is.null(data)) {
+    stop("Provide only one of `filename` or `data`, not both.")
+  }
+
+  if (!is.null(data)) {
+    if (!is.data.frame(data)) stop("`data` must be a data.frame.")
+
+    build_headers_from_data <- function(dat) {
+      cols <- names(dat)
+      list(
+        first = cols,
+        second = vapply(cols, function(col) {
+          if (grepl("^DO-Q-Q", col)) return("Display Order: Imported MaxDiff Question")
+          if (grepl("^(Imp|NotImp)_", col)) return(paste0("Anchor%-%", col))
+          if (grepl("^Q[0-9]+_[0-9]+$", col)) return(paste0("Imported MaxDiff Question%-%", col))
+          col
+        }, character(1)),
+        third = paste0("{'ImportId':", cols, "}")
+      )
+    }
+
+    hdr <- headers
+    if (is.null(hdr)) {
+      hdr <- build_headers_from_data(data)
+    }
+    if (!all(c("first", "second", "third") %in% names(hdr))) {
+      stop("`headers` must be a list with elements: first, second, third.")
+    }
+
+    tmp_file <- tempfile(fileext = ".csv")
+    on.exit(unlink(tmp_file), add = TRUE)
+    hdr_mat <- rbind(hdr$first, hdr$second, hdr$third)
+    write.table(hdr_mat, file = tmp_file, sep = ",", row.names = FALSE, col.names = FALSE)
+    write.table(data, file = tmp_file, sep = ",", row.names = FALSE, col.names = FALSE, append = TRUE)
+    input_file <- tmp_file
+  } else {
+    input_file <- filename
+  }
+
   # ---- read + parse ----
-  md.define <- parse.md.qualtrics(filename, returnList = TRUE)
+  md.define <- parse.md.qualtrics(input_file, returnList = TRUE)
   md.define$q.codeMDneg <- codeMDneg
   md.define$q.codeMDpos <- codeMDpos
   md.define$md.block <- read.md.qualtrics(md.define)$md.block
@@ -338,7 +382,7 @@ maxdiff_augment <- function(
   nrow.preadapt <- nrow(md.block)
 
   # ---- load full CSV (keep original names) ----
-  full.data <- read.csv(filename, check.names = FALSE)
+  full.data <- read.csv(input_file, check.names = FALSE)
 
   if (!("sys_RespNum" %in% names(full.data))) {
     stop("Expected column 'sys_RespNum' not found in CSV.")
@@ -524,4 +568,3 @@ resolve_cols <- function(df, cols, label, prefix = NULL, n = NULL) {
 
   return(md.define)
 }
-
